@@ -27,7 +27,7 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             flex-shrink: 0;
 
-            /* === NEW: Auto-scaling transform === */
+            /* === Auto-scaling transform === */
             transform: scale(var(--game-scale, 1.0));
             transform-origin: center center;
         }
@@ -44,7 +44,7 @@
             background-color: #ffffff;
             border-bottom: 2px solid #eee;
 
-            /* === REVERTED: Back to fixed width === */
+            /* === Back to fixed width === */
             width: 1170px; /* 1200px canvas - 2*15px padding */
             box-sizing: content-box; 
         }
@@ -88,13 +88,8 @@
             // --- Setup ---
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
-            
-            // Internal resolution is set by the canvas tag now
-            
             const definitionText = document.getElementById('definition-text');
             const scoreDisplay = document.getElementById('score');
-            
-            // === NEW: Get game container for scaling ===
             const gameContainer = document.getElementById('game-container');
             
             let score = 0;
@@ -192,8 +187,19 @@
                 { x: 650, y: 320, width: 180, height: 15 } 
             ];
 
-            // --- Keydown Handler ---
+            // --- === UPDATED: Keydown Handler === ---
             document.addEventListener('keydown', (e) => {
+                
+                // --- NEW SCROLL PREVENTION ---
+                // List of keys our game uses that also scroll the page
+                const gameKeys = [' ', 'Spacebar', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+
+                // If the pressed key is in our list, stop the browser's default action
+                if (gameKeys.includes(e.key)) {
+                    e.preventDefault();
+                }
+                // --- END NEW ---
+
                 if (e.key === ' ' || e.key === 'Spacebar') {
                     let didInteract = false;
                     for (let i = wordsOnScreen.length - 1; i >= 0; i--) {
@@ -204,7 +210,8 @@
                             player.y + player.height > word.y) {
                             
                             if (!player.isJumping && isRoundActive) { 
-                                e.preventDefault(); 
+                                // e.preventDefault() was already here, but the one above
+                                // makes this redundant (which is fine).
                                 handleWordCollection(word); 
                                 didInteract = true;
                                 break; 
@@ -563,11 +570,13 @@
 
             // --- === NEW: Dynamic Scaling Function === ---
             function resizeGame() {
-                const totalHeight = 700 + 75; // Game height (700) + UI height (approx 75)
-                const totalWidth = 1200;
+                // This is the game's total fixed size including the UI
+                // UI height is approx 75px, but let's account for padding/border
+                const gameHeight = 700 + document.getElementById('ui').offsetHeight; 
+                const gameWidth = 1200;
 
-                const scaleX = window.innerWidth / totalWidth;
-                const scaleY = window.innerHeight / totalHeight;
+                const scaleX = window.innerWidth / gameWidth;
+                const scaleY = window.innerHeight / gameHeight;
                 
                 // Find the smallest scale factor to fit the game
                 const scale = Math.min(scaleX, scaleY);
@@ -575,7 +584,7 @@
                 // Set the CSS variable to scale the game container
                 gameContainer.style.setProperty('--game-scale', scale);
             }
-
+            
             // --- Start Game ---
             createStars(); 
             loadNewQuestion();
@@ -583,7 +592,8 @@
             
             // --- === NEW: Event Listeners for Scaling === ---
             window.addEventListener('resize', resizeGame);
-            resizeGame(); // Call it once on load
+            // We must wait a tiny bit for the UI to be rendered to get its height
+            setTimeout(resizeGame, 100); // Call it once on load
 
         });
     </script>
