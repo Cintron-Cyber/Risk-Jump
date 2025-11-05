@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cybersecurity Risk Runner</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            flex-direction: column; 
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: auto; 
+        }
+        
+        /* Scaler container removed */
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #333;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            flex-shrink: 0;
+        }
+        canvas {
+            background-color: #0b1a33; /* Dark navy blue sky */
+            border-bottom: 2px solid #333;
+        }
+        #ui {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            background-color: #ffffff;
+            border-bottom: 2px solid #eee;
+            width: 1170px; /* 1200px canvas - 2*15px padding */
+            box-sizing: content-box; 
+        }
+        #definition-box {
+            flex-basis: 75%;
+        }
+        #definition-text {
+            margin: 5px 0 0 0;
+            font-style: italic;
+            color: #444;
+        }
+        #score-box {
+            flex-basis: 20%;
+            text-align: right;
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2a7a2a;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="ui">
+            <div id="definition-box">
+                <strong>Definition:</strong>
+                <p id="definition-text">Loading...</p>
+            </div>
+            <div id="score-box">
+                Score: <span id="score">0</span>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="1200" height="700"></canvas>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- Setup ---
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const definitionText = document.getElementById('definition-text');
+            const scoreDisplay = document.getElementById('score');
+            
+            let score = 0;
+            let gravity = 0.6;
+            let keys = {}; 
+            let isRoundActive = true;
+            let stars = [];
+            
+            // --- Game Content: Cybersecurity Risks ---
+            const riskWords = [
+                {
+                    word: "Phishing",
+                    definition: "A social engineering attack using deceptive emails or websites to steal sensitive information."
+                },
+                {
+                    word: "Malware",
+                    definition: "Malicious software (like viruses or worms) designed to damage or gain unauthorized access."
+                },
+                {
+                    word: "Ransomware",
+                    definition: "A type of malware that encrypts a victim's files and demands a fee for their release."
+                },
+                {
+                    word: "Vulnerability",
+                    definition: "A weakness in a system or network that can be exploited by an attacker."
+                },
+                {
+                    word: "Data Breach",
+                    definition: "An incident where sensitive, confidential, or protected information is stolen from an organization."
+                },
+                {
+                    word: "Spyware",
+                    definition: "Software that secretly monitors a user's computer activity and collects personal information."
+                },
+                {
+                    word: "DDoS",
+                    definition: "An attack that overwhelms a server with a flood of internet traffic, making it unavailable."
+                },
+                {
+                    word: "Firewall",
+                    definition: "A network security device that monitors and filters incoming and outgoing network traffic."
+                },
+                {
+                    word: "Encryption",
+                    definition: "The process of converting information or data into a code to prevent unauthorized access."
+                },
+                {
+                    word: "Risk",
+                    definition: "The potential for loss or damage when a threat exploits a vulnerability."
+                },
+                {
+                    word: "Impact",
+                    definition: "The resulting damage to an organization from a cybersecurity event."
+                },
+                {
+                    word: "Threat",
+                    definition: "Any circumstance or event with the potential to cause harm to a system or network."
+                },
+                {
+                    word: "IoT",
+                    definition: "A network of physical devices (Internet of Things) that are vulnerable to attacks."
+                },
+                {
+                    word: "Network Security",
+                    definition: "The practice of protecting a computer network from intruders, whether targeted or opportunistic."
+                }
+            ];
+
+            let currentQuestion = {};
+            let wordsOnScreen = []; // { x, y, text, isCorrect, width, height, isLit }
+
+            // --- Player ---
+            const player = {
+                x: 100,
+                y: 500, 
+                width: 30,  
+                height: 60, 
+                vx: 0,      
+                vy: 0,      
+                speed: 5,
+                jumpPower: -16, 
+                isJumping: true,
+                currentFrame: 0, 
+                frameTimer: 0     
+            };
+
+            // --- Platforms ---
+            // This list's X values will be randomized each round
+            const masterPlatformsList = [
+                { x: 0, y: 680, width: canvas.width, height: 20 }, // Ground (x won't be randomized)
+                { x: 150, y: 550, width: 250, height: 15 },
+                { x: 500, y: 450, width: 300, height: 15 },
+                { x: 150, y: 320, width: 200, height: 15 }, 
+                { x: 800, y: 220, width: 250, height: 15 },
+                { x: 950, y: 400, width: 180, height: 15 }, 
+                { x: 650, y: 320, width: 180, height: 15 } 
+            ];
+
+            // --- Keydown Handler ---
+            document.addEventListener('keydown', (e) => {
+                if (e.key === ' ' || e.key === 'Spacebar') {
+                    let didInteract = false;
+                    for (let i = wordsOnScreen.length - 1; i >= 0; i--) {
+                        const word = wordsOnScreen[i];
+                        if (player.x < word.x + word.width &&
+                            player.x + player.width > word.x &&
+                            player.y < word.y + word.height &&
+                            player.y + player.height > word.y) {
+                            
+                            if (!player.isJumping && isRoundActive) { 
+                                e.preventDefault(); 
+                                handleWordCollection(word); 
+                                didInteract = true;
+                                break; 
+                            }
+                        }
+                    }
+                    if (!didInteract) {
+                        keys[e.key] = true;
+                    }
+                } else {
+                    keys[e.key] = true;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                keys[e.key] = false;
+            });
+
+            // --- Function to create stars ---
+            function createStars() {
+                stars = []; 
+                for (let i = 0; i < 100; i++) { 
+                    stars.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        radius: Math.random() * 1.5 
+                    });
+                }
+            }
+
+            // --- Function to draw stars ---
+            function drawStars() {
+                ctx.fillStyle = '#ffffff'; 
+                stars.forEach(star => {
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // --- Drawing Functions ---
+            function drawPlayer() {
+                ctx.fillStyle = "#333";
+                ctx.strokeStyle = "#fff"; // White outline
+                ctx.lineWidth = 3; 
+                
+                const centerX = player.x + player.width / 2;
+                const bodyY = player.y + 40; 
+                const armY = player.y + 30;  
+
+                // Head
+                ctx.beginPath();
+                ctx.arc(centerX, player.y + 10, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke(); 
+
+                // Body
+                ctx.beginPath();
+                ctx.moveTo(centerX, player.y + 20);
+                ctx.lineTo(centerX, bodyY);
+                ctx.stroke();
+
+                // Poses
+                if (player.isJumping) {
+                    // Jump Pose
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, bodyY);
+                    ctx.lineTo(centerX - 10, player.y + 50);
+                    ctx.moveTo(centerX, bodyY);
+                    ctx.lineTo(centerX + 10, player.y + 50);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(centerX - 15, armY - 5);
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(centerX + 15, armY - 5);
+                    ctx.stroke();
+                } else if (player.vx !== 0 && player.currentFrame === 1) {
+                    // Walk Pose (Frame 1)
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, bodyY);
+                    ctx.lineTo(centerX - 5, player.y + 60); 
+                    ctx.moveTo(centerX, bodyY);
+                    ctx.lineTo(centerX + 5, player.y + 60); 
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(centerX - 12, armY + 5);
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(centerX + 12, armY + 5);
+                    ctx.stroke();
+                } else {
+                    // Idle Pose
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, bodyY);
+                    ctx.lineTo(player.x, player.y + 60); 
+                    ctx.moveTo(centerX, bodyY);
+                    ctx.lineTo(player.x + player.width, player.y + 60); 
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(player.x, armY);
+                    ctx.lineTo(player.x + player.width, armY);
+                    ctx.stroke();
+                }
+            }
+
+            function drawPlatforms() {
+                ctx.fillStyle = '#6b4f3a'; // Brown
+                // Draw all platforms in the master list
+                masterPlatformsList.forEach(p => {
+                    ctx.fillRect(p.x, p.y, p.width, p.height);
+                });
+            }
+
+            function drawCampfires() {
+                ctx.font = "bold 18px Arial";
+                
+                wordsOnScreen.forEach(word => {
+                    ctx.fillStyle = '#FFFFFF'; // All unlit text is white
+                    ctx.fillText(word.text, word.x, word.y);
+
+                    if (word.isLit) {
+                        const fireX = word.x + word.width / 2; 
+                        const fireY = word.y + 25; 
+
+                        if (word.isCorrect) {
+                            // FRIENDLY FIRE
+                            ctx.fillStyle = '#f9a825'; 
+                            ctx.fillRect(fireX - 8, fireY - (Math.random() * 10 + 20), 16, Math.random() * 10 + 20);
+                            ctx.fillStyle = '#e65100'; 
+                            ctx.fillRect(fireX - 5, fireY - (Math.random() * 5 + 15), 10, Math.random() * 5 + 15);
+                            ctx.fillStyle = '#fbc02d'; 
+                            ctx.fillRect(fireX - 2, fireY - (Math.random() * 5 + 8), 4, Math.random() * 5 + 8);
+                        } else {
+                            // ANGRY/EXPLOSION FIRE
+                            const flickerHeight = Math.random() * 20 + 30; 
+                            const flickerWidth = Math.random() * 15 + 20;  
+                            const flickerOffset = Math.random() * 10 - 5;  
+
+                            ctx.fillStyle = '#ff0000'; 
+                            ctx.fillRect(fireX - flickerWidth / 2 + flickerOffset, fireY - flickerHeight, flickerWidth, flickerHeight);
+                            ctx.fillStyle = '#8b0000'; 
+                            ctx.fillRect(fireX - flickerWidth / 2.5 + flickerOffset, fireY - flickerHeight * 0.7, flickerWidth / 1.5, flickerHeight * 0.7);
+                            ctx.fillStyle = '#333333'; 
+                            ctx.fillRect(fireX - flickerWidth / 3 + flickerOffset, fireY - flickerHeight * 0.4, flickerWidth / 2, flickerHeight * 0.4);
+                        }
+
+                    } else {
+                        // DRAW UNLIT LOGS
+                        const logY = word.y + 15; 
+                        const logWidth = word.width / 2.5; 
+                        ctx.fillStyle = '#6b4f3a'; 
+                        ctx.save();
+                        ctx.translate(word.x + word.width / 2, logY + 5); 
+                        ctx.rotate(Math.PI / 6); 
+                        ctx.fillRect(-logWidth / 2, -4, logWidth, 8); 
+                        ctx.rotate(-Math.PI / 3); 
+                        ctx.fillRect(-logWidth / 2, -4, logWidth, 8); 
+                        ctx.restore();
+                    }
+                });
+            }
+
+
+            // --- === NEW HELPER FUNCTION === ---
+            // Checks if two platforms are horizontally overlapping or too close
+            // (We'll add a 50px buffer)
+            function isHorizontallyOverlapping(plat1, plat2, buffer = 50) {
+                return plat1.x < plat2.x + plat2.width + buffer &&
+                       plat1.x + plat1.width + buffer > plat2.x;
+            }
+            // --- END NEW HELPER ---
+
+
+            // --- === UPDATED: loadNewQuestion (now prevents platform overlap) === ---
+            function loadNewQuestion() {
+                wordsOnScreen = [];
+
+                // === NEW: Randomize Platform X-Positions (with collision check) ===
+                // We start at i = 1 to skip the ground (index 0)
+                for (let i = 1; i < masterPlatformsList.length; i++) {
+                    const plat = masterPlatformsList[i];
+                    
+                    let retryCount = 0; // Failsafe
+                    while (true) { // Keep trying until we find a good spot
+                        // Give it a new random X
+                        plat.x = 100 + Math.random() * (canvas.width - 200 - plat.width);
+                        
+                        let isIntersecting = false;
+                        // Check against all *previously placed* platforms (j < i)
+                        for (let j = 1; j < i; j++) {
+                            const otherPlat = masterPlatformsList[j];
+                            
+                            // Only check for overlap if Y levels are close
+                            if (Math.abs(plat.y - otherPlat.y) < 100) { 
+                                if (isHorizontallyOverlapping(plat, otherPlat)) {
+                                    isIntersecting = true;
+                                    break; // Stop checking
+                                }
+                            }
+                        }
+
+                        if (!isIntersecting) {
+                            break; // Found a good spot!
+                        }
+
+                        retryCount++;
+                        if (retryCount > 50) {
+                            console.error("Could not place platform, breaking loop.");
+                            break; // Failsafe to prevent infinite loop
+                        }
+                    }
+                }
+                // === END NEW ===
+
+                const correctIndex = Math.floor(Math.random() * riskWords.length);
+                currentQuestion = riskWords[correctIndex];
+                definitionText.textContent = currentQuestion.definition;
+
+                // === Difficulty logic ===
+                let numPlatformsToUse, numDecoys;
+                if (score >= 5) {
+                    numPlatformsToUse = 6; // Use all 6 spawnable platforms
+                    numDecoys = 5;         // 1 correct + 5 wrong = 6 campfires
+                } else {
+                    numPlatformsToUse = 4; // Use 4 spawnable platforms
+                    numDecoys = 3;         // 1 correct + 3 wrong = 4 campfires
+                }
+
+                // Get decoys
+                const decoys = [];
+                while (decoys.length < numDecoys && decoys.length < riskWords.length - 1) {
+                    const decoyIndex = Math.floor(Math.random() * riskWords.length);
+                    if (decoyIndex !== correctIndex && !decoys.some(d => d.word === riskWords[decoyIndex].word)) {
+                        decoys.push(riskWords[decoyIndex]);
+                    }
+                }
+                
+                // Get all spawnable platforms (which are now randomized) and shuffle them
+                const allSpawnPlatforms = [...masterPlatformsList].slice(1); 
+                let shuffledPlatforms = allSpawnPlatforms.sort(() => 0.5 - Math.random());
+                // Select the number of platforms we need for this difficulty
+                const spawnPlatforms = shuffledPlatforms.slice(0, numPlatformsToUse);
+
+                // Create list of words to place (1 correct + decoys)
+                const wordsToPlace = [ { text: currentQuestion.word, isCorrect: true } ];
+                decoys.forEach(d => wordsToPlace.push({ text: d.word, isCorrect: false }));
+                // Shuffle the words
+                wordsToPlace.sort(() => 0.5 - Math.random());
+                
+                // Place one word on each selected platform
+                for (let i = 0; i < spawnPlatforms.length; i++) {
+                    const plat = spawnPlatforms[i];
+                    const word = wordsToPlace[i];
+                    if (!word) continue; 
+
+                    const textWidth = ctx.measureText(word.text).width;
+                    
+                    wordsOnScreen.push({
+                        ...word,
+                        x: plat.x + (plat.width - textWidth) / 2, 
+                        y: plat.y - 35, 
+                        width: textWidth, 
+                        height: 40, 
+                        isLit: false 
+                    });
+                }
+            }
+
+            function updatePlayer() {
+                // Handle horizontal movement
+                if (keys['ArrowRight'] || keys['d']) {
+                    player.vx = player.speed;
+                } else if (keys['ArrowLeft'] || keys['a']) {
+                    player.vx = -player.speed;
+                } else {
+                    if (Math.abs(player.vx) < 0.1) {
+                        player.vx = 0;
+                    } else {
+                        player.vx *= 0.9; 
+                    }
+                }
+
+                // Handle jump
+                if ((keys['ArrowUp'] || keys['w'] || keys[' ']) && !player.isJumping) {
+                    player.vy = player.jumpPower;
+                    player.isJumping = true;
+                }
+
+                // Apply physics
+                player.vy += gravity;
+                player.x += player.vx;
+                player.y += player.vy;
+
+                // Screen bounds (left/right)
+                if (player.x < 0) {
+                    player.x = 0;
+                    player.vx = 0; 
+                }
+                if (player.x + player.width > canvas.width) {
+                    player.x = canvas.width - player.width;
+                    player.vx = 0; 
+                }
+
+                // Platform collision
+                let onPlatform = false;
+                masterPlatformsList.forEach(p => { // Check against all platforms
+                    if (player.x < p.x + p.width &&
+                        player.x + player.width > p.x &&
+                        player.y < p.y + p.height &&
+                        player.y + player.height > p.y) {
+                        
+                        if (player.vy > 0 && (player.y + player.height - player.vy) <= p.y) {
+                            player.y = p.y - player.height;
+                            player.vy = 0;
+                            player.isJumping = false;
+                            onPlatform = true;
+                        }
+                    }
+                });
+                
+                if (!onPlatform && player.y + player.height < canvas.height) {
+                    player.isJumping = true;
+                }
+
+                // Animation logic
+                if (player.vx !== 0 && !player.isJumping) {
+                    player.frameTimer++;
+                    if (player.frameTimer > 8) { 
+                        player.currentFrame = (player.currentFrame + 1) % 2; 
+                        player.frameTimer = 0;
+                    }
+                } else if (player.vx === 0 || player.isJumping) {
+                    player.currentFrame = 0;
+                    player.frameTimer = 0;
+                }
+            }
+
+            function handleWordCollection(word) {
+                if (!isRoundActive) return;
+                isRoundActive = false; 
+                
+                if (word.isCorrect) {
+                    score++;
+                } else {
+                    score--;
+                    // KNOCKBACK EFFECT
+                    const knockbackDirection = (player.x + player.width / 2 < word.x + word.width / 2) ? -1 : 1; 
+                    player.vx = knockbackDirection * 10; 
+                    player.vy = player.jumpPower * 0.5; 
+                    player.isJumping = true; 
+                }
+                scoreDisplay.textContent = score;
+                
+                word.isLit = true; 
+
+                setTimeout(() => {
+                    wordsOnScreen = []; 
+                    loadNewQuestion(); // Will re-check score for difficulty and randomize platforms
+                    isRoundActive = true; 
+                }, 2000); 
+            }
+
+            // --- Game Loop ---
+            function gameLoop() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                updatePlayer();
+                drawStars(); 
+                drawPlatforms();
+                drawCampfires(); 
+                drawPlayer();
+                requestAnimationFrame(gameLoop);
+            }
+
+            // --- SCALER LOGIC REMOVED ---
+            
+            // --- Start Game ---
+            createStars(); 
+            loadNewQuestion();
+            gameLoop(); 
+
+        });
+    </script>
+</body>
+</html>
